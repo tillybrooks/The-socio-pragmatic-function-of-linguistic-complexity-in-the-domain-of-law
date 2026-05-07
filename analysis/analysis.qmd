@@ -31,6 +31,7 @@ library(lme4)
 library(lmerTest)
 library(emmeans)
 library(ggthemes)
+library(ordinal)
 ```
 
 ## Load and preprocess data
@@ -251,6 +252,32 @@ knitr::kable(simple_effects, caption = "Simple effects of jargon (high - low) at
 ```
 
 **Key finding**: Jargon significantly increases authority ratings only when syntax is low AND shall is absent (Δ = 0.45, z = 3.43, p < .001).
+
+## Ordinal robustness check
+
+Authority ratings are an ordinal 5-point Likert scale, so we re-fit the same fixed-effects structure as a cumulative-link mixed model to verify that the linear-model conclusions are not artifacts of treating the scale as continuous. Sum-to-zero contrasts are applied so coefficients are interpretable as main effects, matching the Type III ANOVA above.
+
+```{r model-ordinal}
+authority_df_ord <- authority_df %>%
+  mutate(
+    rating_ord = factor(authority_rating, levels = 1:5, ordered = TRUE),
+    syn_level = factor(syn_level),
+    sem_level = factor(sem_level),
+    modal_pres = factor(modal_pres)
+  )
+contrasts(authority_df_ord$syn_level)  <- contr.sum(2)
+contrasts(authority_df_ord$sem_level)  <- contr.sum(2)
+contrasts(authority_df_ord$modal_pres) <- contr.sum(2)
+
+model_3way_ord <- clmm(
+  rating_ord ~ syn_level * sem_level * modal_pres +
+    (1 | participant_file) + (1 | sent_id),
+  data = authority_df_ord,
+  link = "logit"
+)
+
+summary(model_3way_ord)
+```
 
 # Comprehension Analysis
 
