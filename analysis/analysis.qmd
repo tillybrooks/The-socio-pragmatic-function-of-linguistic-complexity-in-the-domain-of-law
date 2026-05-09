@@ -281,6 +281,46 @@ summary(model_3way_ord)
 
 # Comprehension Analysis
 
+## Comprehension accuracy by experimental condition
+
+```{r comp-by-shall}
+comp_by_shall <- comp_df %>%
+  group_by(modal_pres) %>%
+  summarise(
+    N = n(),
+    N_correct = sum(is_correct, na.rm = TRUE),
+    Accuracy = mean(is_correct, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+knitr::kable(comp_by_shall, digits = 2,
+             caption = "Comprehension accuracy by shall presence")
+
+shall_tab <- with(comp_df, table(modal_pres, is_correct))
+chisq.test(shall_tab)
+```
+
+```{r comp-main-effects-model}
+comp_df_f <- comp_df %>%
+  mutate(
+    syn_level  = factor(syn_level),
+    sem_level  = factor(sem_level),
+    modal_pres = factor(modal_pres)
+  )
+contrasts(comp_df_f$syn_level)  <- contr.sum(2)
+contrasts(comp_df_f$sem_level)  <- contr.sum(2)
+contrasts(comp_df_f$modal_pres) <- contr.sum(2)
+
+comp_model <- glmer(
+  is_correct ~ syn_level * sem_level * modal_pres +
+    (1 | participant_file) + (1 | sent_id),
+  data    = comp_df_f,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+car::Anova(comp_model, type = 3)
+```
+
 ## Trial-level effect of comprehension on authority ratings
 
 ```{r comp-authority-model}
@@ -413,9 +453,73 @@ ggsave("../paper/figure_results.pdf", p_3way, width = 6.5, height = 4)
 ggsave("../paper/figure_results.png", p_3way, width = 6.5, height = 4, dpi = 300)
 ```
 
-## Figure 2: Comprehension and authority
+## Figure 2: Comprehension accuracy by condition
 
-```{r figure-comprehension, fig.width=5, fig.height=4}
+```{r figure-comprehension-conditions, fig.width=6.5, fig.height=4}
+# Compute accuracy by condition
+comp_summary <- comp_df %>%
+  group_by(syn_level, sem_level, modal_pres) %>%
+  summarise(
+    accuracy = mean(is_correct, na.rm = TRUE) * 100,
+    n = n(),
+    se = sqrt(accuracy * (100 - accuracy) / n),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Syntax = factor(ifelse(syn_level == "high", "High", "Low"), levels = c("High", "Low")),
+    Jargon = factor(ifelse(sem_level == "high", "High jargon", "Low jargon"),
+                    levels = c("High jargon", "Low jargon")),
+    Modal = factor(ifelse(modal_pres == "S", "With 'shall'", "Without 'shall'"),
+                   levels = c("Without 'shall'", "With 'shall'"))
+  )
+
+# Create labels at midpoint of each line
+label_df_comp <- comp_summary %>%
+  group_by(Modal, Jargon) %>%
+  summarise(
+    y_mid = mean(accuracy),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    x_mid = 1.5,
+    label = as.character(Jargon),
+    y_offset = ifelse(Jargon == "High jargon", 1.5, -1.5)
+  )
+
+# Plot
+p_comp_conditions <- ggplot(comp_summary, aes(x = Syntax, y = accuracy, color = Jargon, group = Jargon)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3.5) +
+  geom_errorbar(aes(ymin = accuracy - 1.96*se, ymax = accuracy + 1.96*se),
+                width = 0.08, linewidth = 0.8) +
+  geom_label(data = label_df_comp,
+             aes(x = x_mid, y = y_mid + y_offset, label = label, color = Jargon),
+             size = 2.8, label.padding = unit(0.15, "lines"),
+             linewidth = 0, fill = "white", alpha = 0.85,
+             show.legend = FALSE) +
+  facet_wrap(~ Modal) +
+  scale_color_colorblind() +
+  scale_y_continuous(limits = c(75, 100), breaks = seq(75, 100, 5)) +
+  labs(
+    x = "Syntactic complexity",
+    y = "Comprehension accuracy (%)"
+  ) +
+  theme_few(base_size = 12) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(size = 11, face = "bold"),
+    panel.spacing = unit(1.5, "lines")
+  )
+
+p_comp_conditions
+
+ggsave("../paper/figure_comprehension_conditions.pdf", p_comp_conditions, width = 6.5, height = 4)
+ggsave("../paper/figure_comprehension_conditions.png", p_comp_conditions, width = 6.5, height = 4, dpi = 300)
+```
+
+## Figure 3: Comprehension and authority (participant-level)
+
+```{r figure-comprehension-authority, fig.width=5, fig.height=4}
 # Compute participant-level summary
 participant_summary <- combined_df %>%
   group_by(participant_file) %>%
